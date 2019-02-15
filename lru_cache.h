@@ -10,6 +10,7 @@
 
 #include <unordered_map>
 
+
 const std::size_t kDefaultCacheSize = 256;
 
 template <typename Key, typename Value>
@@ -20,7 +21,9 @@ struct Node {
     Node<Key, Value>* next;
 
     Node() = default;
-    Node(Key k, Value v, Node* p = nullptr, Node* n = nullptr)
+    Node(Key k, Value v)
+        : key(k), value(v), prev(nullptr), next(nullptr) { }
+    Node(Key k, Value v, Node* p , Node* n)
         : key(k), value(v), prev(p), next(n) { 
         next->prev = this;
         prev->next = this;
@@ -32,11 +35,15 @@ class LRUCache {
  public:
     explicit LRUCache(std::size_t capacity);
 
+    LRUCache(const LRUCache<Key, Value>& other);
+    LRUCache<Key, Value> operator=(const LRUCache<Key, Value>& other);
+
     void Insert(Key key, Value value);
     // 查找这个key在当前的cache中没，如果在返回true，并且设置value，
     // 如果不在返回false
     bool LookUp(Key key, Value* value);
     
+    ~LRUCache();
  private:
      void DeleteNode(Node<Key, Value>* node) {
          node->prev->next = node->next;
@@ -48,6 +55,32 @@ class LRUCache {
          node->prev = head_;
          head_->next->prev = node;
          head_->next = node;
+     }
+
+     void RelaseCache() {
+         auto iter = cache_table_.begin();
+         for (; iter != cache_table_.end();) {
+             delete iter->second;
+             iter = cache_table_.erase(iter);
+         }
+     }
+
+     void CopyCache(const LRUCache<Key, Value>& other) {
+         for (auto& i : other.cache_table_) {
+             Node<Key, Value>* new_node = 
+                 new Node<Key, Value>(i.second->key, i.second->value);
+             if (!head_->next && !tail_->prev) {
+                 new_node->prev = head_;
+                 head_->next = new_node;
+             }
+             else {
+                 new_node->prev = tail_->prev;
+                 tail_->prev->next = new_node;
+             }
+             new_node->next = tail_;
+             tail_->prev = new_node;
+             cache_table_.insert(std::make_pair(i.first, new_node));
+         }
      }
      // 用于保存cache的数据结构的一个缩写，使用hash table + bothway list
      // 来作为cache的数据结构，使用hash table的作用是为了将查找复杂度从O(n)
@@ -69,6 +102,28 @@ LRUCache<Key, Value>::LRUCache(std::size_t capacity)
     head_->next = tail_;
     tail_->prev = head_;
     tail_->next = nullptr;
+}
+
+template<typename Key, typename Value>
+inline LRUCache<Key, Value>::LRUCache(
+    const LRUCache<Key, Value>& other) {
+    head_ = new Node<Key, Value>(other.head_->key, other.tail_->value);
+    tail_ = new Node<Key, Value>(other.tail_->key, other.tail_->value);
+    capacity_ = other.capacity_;
+    
+    CopyCache(other);
+}
+
+template<typename Key, typename Value>
+inline LRUCache<Key, Value> 
+LRUCache<Key, Value>::operator=(const LRUCache<Key, Value>& other) {
+    // 1. 释方原先的内存
+    // 2. 申请新的内存
+    // 3. copy other内容到新的内存
+    RelaseCache();
+    capacity_ = other.capacity_;
+    CopyCache(other);
+    return *this;
 }
 
 template<typename Key, typename Value>
@@ -106,5 +161,9 @@ inline bool LRUCache<Key, Value>::LookUp(Key key, Value * value) {
     return false;
 }
 
+template<typename Key, typename Value>
+inline LRUCache<Key, Value>::~LRUCache() {
+    RelaseCache();
+}
 
 #endif // !BASE_LRU_CACHE_H
